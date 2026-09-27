@@ -1,25 +1,71 @@
-# WGDashboard — نصب
+# WGDashboard — Installation
 
-فایل‌های نصب پنل WGDashboard و ایجنت نود (`wg-node`). سورس کد پنل خصوصی است؛
-نصب فقط از طریق Docker و ایمیج‌های از پیش ساخته‌شده (`ghcr.io/hosseinpv1379/*`)
-انجام می‌شود.
+Install files for the WGDashboard panel and its `wg-node` agent. The panel's
+source code is private; installation only uses Docker and the prebuilt
+images (`ghcr.io/hosseinpv1379/*`).
 
-## باز کردن پورت‌های لازم روی فایروال
+## Install Docker
+
+### Ubuntu / Debian
 
 ```bash
-# روی سرور پنل
-ufw allow 10086/tcp   # پنل وب
-ufw allow 51820/udp   # وایرگارد (نود محلی پنل)
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-# روی سرور هر نود
-ufw allow 51820/udp   # وایرگارد
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
 ```
 
-اگه از پروفایل HTTPS استفاده می‌کنی، `80/tcp` و `443/tcp` رو هم روی سرور پنل باز کن.
+### CentOS / RHEL
 
-## نصب پنل
+```bash
+sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo \
+  https://download.docker.com/linux/centos/docker-ce.repo
+sudo yum install -y docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+```
 
-### دانلود فایل‌ها
+## Open the required firewall ports
+
+```bash
+# On the panel server
+sudo ufw allow 10086/tcp   # web panel
+sudo ufw allow 51820/udp   # WireGuard (panel's local node)
+
+# On each node server
+sudo ufw allow 51820/udp   # WireGuard
+```
+
+Using CentOS/`firewalld` instead:
+
+```bash
+sudo firewall-cmd --permanent --add-port=10086/tcp
+sudo firewall-cmd --permanent --add-port=51820/udp
+sudo firewall-cmd --reload
+```
+
+Also open `80/tcp` and `443/tcp` on the panel server if you use the HTTPS profile.
+
+## Install the panel
+
+### Download the files
 
 ```bash
 mkdir -p /opt/WGDashboard/docker && cd /opt/WGDashboard/docker
@@ -27,54 +73,54 @@ curl -fsSL https://raw.githubusercontent.com/hosseinpv1379/wgdashboard-install/m
 curl -fsSL https://raw.githubusercontent.com/hosseinpv1379/wgdashboard-install/main/docker/.env.example -o .env
 ```
 
-### کانفیگ `.env`
+### Configure `.env`
 
 ```bash
 nano .env
 ```
 
-حداقل این مقادیر رو ست کن:
+Set at least these values:
 
-| متغیر | توضیح |
+| Variable | Description |
 | --- | --- |
-| `WGD_ADMIN_PASSWORD` | پسورد ادمین پنل |
-| `POSTGRES_PASSWORD` | پسورد دیتابیس |
-| `PUBLIC_IP` | آی‌پی عمومی سرور |
-| `WGD_DOMAIN` | (اختیاری) دومین برای HTTPS خودکار — با ست شدنش `COMPOSE_PROFILES=https` رو هم بزن |
+| `WGD_ADMIN_PASSWORD` | panel admin password |
+| `POSTGRES_PASSWORD` | database password |
+| `PUBLIC_IP` | server's public IP |
+| `WGD_DOMAIN` | (optional) domain for automatic HTTPS — also set `COMPOSE_PROFILES=https` when you set this |
 
-### اجرا
+### Run
 
 ```bash
 docker compose --env-file .env pull
 docker compose --env-file .env up -d
 ```
 
-پنل بالا میاد روی `http://PUBLIC_IP:10086` (یا `https://WGD_DOMAIN` اگه HTTPS رو فعال کردی).
+The panel comes up at `http://PUBLIC_IP:10086` (or `https://WGD_DOMAIN` if you enabled HTTPS).
 
-### توقف
+### Stop
 
 ```bash
 docker compose --env-file .env down
 ```
 
-### آپدیت
+### Update
 
 ```bash
 docker compose --env-file .env pull
 docker compose --env-file .env up -d --remove-orphans
 ```
 
-### لاگ‌ها
+### Logs
 
 ```bash
 docker compose --env-file .env logs -f wgdashboard
 ```
 
-## نصب نود
+## Install a node
 
-هر نود روی سرور جدا نصب می‌شه. اول از **پنل → Nodes** یک نود بساز و **Node ID** و **Node Token** رو کپی کن.
+Each node runs on its own server. First create the node from **Panel → Nodes** and copy its **Node ID** and **Node Token**.
 
-### دانلود فایل‌ها
+### Download the files
 
 ```bash
 mkdir -p /opt/wg-node && cd /opt/wg-node
@@ -82,42 +128,42 @@ curl -fsSL https://raw.githubusercontent.com/hosseinpv1379/wgdashboard-install/m
 curl -fsSL https://raw.githubusercontent.com/hosseinpv1379/wgdashboard-install/main/wg-node/.env.example -o .env
 ```
 
-### کانفیگ `.env`
+### Configure `.env`
 
 ```bash
 nano .env
 ```
 
-حداقل این مقادیر رو ست کن:
+Set at least these values:
 
-| متغیر | توضیح |
+| Variable | Description |
 | --- | --- |
-| `WG_PANEL_URL` | آدرس پنل، مثل `https://panel.example.com` |
-| `WG_NODE_ID` / `WG_NODE_TOKEN` | از صفحه‌ی Nodes پنل |
-| `WG_NODE_PUBLIC_ENDPOINT` | آی‌پی این سرور نود، مثل `1.2.3.4:51820` |
-| `WG_NODE_NAME` / `WG_NODE_REGION` | نام و لوکیشن نود |
+| `WG_PANEL_URL` | the panel's address, e.g. `https://panel.example.com` |
+| `WG_NODE_ID` / `WG_NODE_TOKEN` | from the panel's Nodes page |
+| `WG_NODE_PUBLIC_ENDPOINT` | this node server's IP, e.g. `1.2.3.4:51820` |
+| `WG_NODE_NAME` / `WG_NODE_REGION` | node name and location |
 
-### اجرا
+### Run
 
 ```bash
 docker compose --env-file .env pull
 docker compose --env-file .env up -d
 ```
 
-### توقف
+### Stop
 
 ```bash
 docker compose --env-file .env down
 ```
 
-### آپدیت
+### Update
 
 ```bash
 docker compose --env-file .env pull
 docker compose --env-file .env up -d
 ```
 
-### لاگ‌ها
+### Logs
 
 ```bash
 docker compose --env-file .env logs -f
