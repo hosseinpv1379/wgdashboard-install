@@ -150,6 +150,14 @@ docker compose --env-file .env pull
 docker compose --env-file .env up -d
 ```
 
+Once the node shows `online` in the panel (usually under a minute), go to
+**Panel → Nodes → this node → Add interface** to create its first WireGuard
+interface — the agent registers the node but never creates an interface on
+its own. Leave the address pool/port blank to let the panel pick one, or
+give an exact CIDR like `10.88.0.0/24`. Repeat for any extra interface;
+delete one from the same page's trash icon (refused while a peer or
+outbound still uses it).
+
 ### Stop
 
 ```bash

@@ -13,12 +13,9 @@ services:
       WG_NODE_NAME: ${WG_NODE_NAME:-wg-node}
       WG_NODE_REGION: ${WG_NODE_REGION:-}
       WG_NODE_PUBLIC_ENDPOINT: ${WG_NODE_PUBLIC_ENDPOINT:?Set the public WireGuard endpoint}
-      WG_NODE_INTERFACE: ${WG_NODE_INTERFACE:-wg0}
-      # Leave WG_NODE_ADDRESS_POOL empty so the agent auto-picks a free pool
-      # sized by WG_NODE_POOL_PREFIX; only set it for an exact CIDR override.
-      WG_NODE_ADDRESS_POOL: ${WG_NODE_ADDRESS_POOL:-}
-      WG_NODE_POOL_PREFIX: ${WG_NODE_POOL_PREFIX:-24}
-      WG_NODE_LISTEN_PORT: ${WG_NODE_LISTEN_PORT:-51820}
+      # No interface config here: the agent creates none on its own. Create
+      # the first (and every later) one from Commercial Panel → Nodes → Add
+      # interface once this node has registered.
       WG_NODE_CAPACITY: ${WG_NODE_CAPACITY:-0}
       WG_NODE_POLL_SECONDS: ${WG_NODE_POLL_SECONDS:-5}
       WG_NODE_REPORT_SECONDS: ${WG_NODE_REPORT_SECONDS:-15}
