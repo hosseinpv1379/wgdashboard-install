@@ -1,0 +1,210 @@
+name: wgdashboard-commercial
+
+services:
+  wgdashboard:
+    image: ${WGD_IMAGE:-ghcr.io/hosseinpv1379/wgdashboard:latest}
+    restart: unless-stopped
+    container_name: wgdashboard
+    init: true
+    stop_grace_period: 30s
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      CONFIGURATION_PATH: /data
+      TZ: ${TZ:-UTC}
+      dynamic_config: "true"
+      global_dns: ${GLOBAL_DNS:-1.1.1.1}
+      public_ip: ${PUBLIC_IP:-}
+      wgd_port: "10086"
+      dashboard_language: ${WGD_LANGUAGE:-en-US}
+      wg_autostart: ${WG_AUTOSTART:-wg0}
+      username: ${WGD_ADMIN_USERNAME:-admin}
+      password: ${WGD_ADMIN_PASSWORD:?Copy docker/.env.example to docker/.env and set WGD_ADMIN_PASSWORD}
+      database_type: ${DATABASE_TYPE:-postgresql}
+      database_host: postgres
+      database_port: "5432"
+      database_username: ${POSTGRES_USER:-wgdashboard}
+      database_password: ${POSTGRES_PASSWORD:?Copy docker/.env.example to docker/.env and set POSTGRES_PASSWORD}
+      WGD_NODE_BOOTSTRAP_TOKEN: ${WGD_NODE_BOOTSTRAP_TOKEN:-}
+      WGD_SUBSCRIPTION_ENCRYPTION_KEY: ${WGD_SUBSCRIPTION_ENCRYPTION_KEY:-}
+      WGD_LOCAL_NODE_ENABLED: "true"
+      WGD_LOCAL_NODE_NAME: ${WGD_LOCAL_NODE_NAME:-panel-local}
+      WGD_LOCAL_NODE_REGION: ${WGD_LOCAL_NODE_REGION:-Local}
+      WGD_LOCAL_NODE_ENDPOINT: ${PUBLIC_IP:?Set PUBLIC_IP in docker/.env}:${WG_PORT:-51820}
+      WGD_LOCAL_NODE_CAPACITY: ${WGD_LOCAL_NODE_CAPACITY:-0}
+      # Picked up by nginx-proxy/acme-companion below. Leave WGD_DOMAIN empty
+      # to skip HTTPS entirely and keep using http://PUBLIC_IP:10086 as before.
+      VIRTUAL_HOST: ${WGD_DOMAIN:-}
+      VIRTUAL_PORT: "10086"
+      LETSENCRYPT_HOST: ${WGD_DOMAIN:-}
+      LETSENCRYPT_EMAIL: ${WGD_DOMAIN_EMAIL:-}
+
+    ports:
+      - "${WGD_PORT:-10086}:10086/tcp"
+      - "${WG_PORT:-51820}:${WG_PORT:-51820}/udp"
+
+    volumes:
+      - amnezia_config:/etc/amnezia/amneziawg
+      - wireguard_config:/etc/wireguard
+      - dashboard_data:/data
+
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      net.ipv4.conf.all.src_valid_mark: "1"
+      net.ipv4.ip_forward: "1"
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  wg-node-local:
+    image: ${WG_NODE_IMAGE:-ghcr.io/hosseinpv1379/wg-node:latest}
+    restart: unless-stopped
+    network_mode: "service:wgdashboard"
+    depends_on:
+      wgdashboard:
+        condition: service_healthy
+    cap_add:
+      - NET_ADMIN
+    environment:
+      WG_PANEL_URL: http://127.0.0.1:10086
+      WG_NODE_CREDENTIALS: /panel-data/local-node-credentials.json
+      WG_NODE_NAME: ${WGD_LOCAL_NODE_NAME:-panel-local}
+      WG_NODE_REGION: ${WGD_LOCAL_NODE_REGION:-Local}
+      WG_NODE_PUBLIC_ENDPOINT: ${PUBLIC_IP:?Set PUBLIC_IP in docker/.env}:${WG_PORT:-51820}
+      WG_NODE_INTERFACE: ${WG_NODE_INTERFACE:-wg0}
+      WG_NODE_ADDRESS_POOL: ${WG_NETWORK:-10.0.0.1}/${WG_SUBNET:-24}
+      WG_NODE_CAPACITY: ${WGD_LOCAL_NODE_CAPACITY:-0}
+      WG_NODE_POLL_SECONDS: ${WG_NODE_POLL_SECONDS:-5}
+      WG_NODE_REPORT_SECONDS: ${WG_NODE_REPORT_SECONDS:-10}
+      WG_NODE_PRESHARED_KEY: ${WG_NODE_PRESHARED_KEY:-true}
+      WG_NODE_STATE: /var/lib/wg-node/state.json
+      WG_NODE_OUTBOUND_DIR: /etc/wg-node/outbounds
+    volumes:
+      - wireguard_config:/etc/wireguard
+      - dashboard_data:/panel-data:ro
+      - wg_node_local_data:/var/lib/wg-node
+      - wg_node_local_config:/etc/wg-node
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wgdashboard
+      POSTGRES_USER: ${POSTGRES_USER:-wgdashboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy docker/.env.example to docker/.env and set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  adminer:
+    image: adminer:5-standalone
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    # DB_ADMIN_BIND defaults to 0.0.0.0 so Adminer is reachable at
+    # http://PUBLIC_IP:${DB_ADMIN_PORT:-8080} instead of only from the host
+    # itself. Its own login page still requires the real Postgres
+    # credentials to get in, but it's still a database admin UI facing the
+    # internet — set DB_ADMIN_BIND=127.0.0.1 in docker/.env to go back to
+    # local-only, or firewall this port off to trusted IPs only.
+    ports:
+      - "${DB_ADMIN_BIND:-0.0.0.0}:${DB_ADMIN_PORT:-8080}:8080/tcp"
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+
+  # Optional: fronts the panel with nginx over HTTPS. Only does anything once
+  # WGD_DOMAIN (and WGD_DOMAIN_EMAIL) are set in docker/.env — that domain
+  # must already point its DNS A record at this server. Leave WGD_DOMAIN
+  # empty to skip this entirely; the panel stays reachable at
+  # http://PUBLIC_IP:10086 either way.
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy:1.11
+    container_name: nginx-proxy
+    restart: unless-stopped
+    # Only starts when the "https" profile is active (set COMPOSE_PROFILES=https
+    # in docker/.env) — plain `docker compose up -d` skips it entirely, so an
+    # existing install with its own web server on ports 80/443 is unaffected.
+    profiles: ["https"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - nginx_certs:/etc/nginx/certs:ro
+      - nginx_vhost:/etc/nginx/vhost.d
+      - nginx_html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+
+  nginx-proxy-acme:
+    image: nginxproxy/acme-companion:2.8
+    restart: unless-stopped
+    profiles: ["https"]
+    depends_on:
+      - nginx-proxy
+    # Deliberately not `volumes_from: [nginx-proxy]`: that would also copy
+    # nginx-proxy's :ro mount of nginx_certs, but acme-companion's entire
+    # job is writing new certificates into that same directory — mounted
+    # read-only, it crash-loops on every start ("can't write to the
+    # '/etc/nginx/certs' directory").
+    volumes:
+      - nginx_certs:/etc/nginx/certs:rw
+      - nginx_vhost:/etc/nginx/vhost.d:rw
+      - nginx_html:/usr/share/nginx/html:rw
+      - acme_state:/etc/acme.sh
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      DEFAULT_EMAIL: ${WGD_DOMAIN_EMAIL:-}
+      NGINX_PROXY_CONTAINER: nginx-proxy
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+
+volumes:
+  amnezia_config:
+    name: ${AMNEZIA_CONFIG_VOLUME:-wgdashboard-commercial_amnezia_config}
+  wireguard_config:
+    name: ${WIREGUARD_CONFIG_VOLUME:-wgdashboard-commercial_wireguard_config}
+  dashboard_data:
+    name: ${DASHBOARD_DATA_VOLUME:-wgdashboard-commercial_dashboard_data}
+  postgres_data:
+    name: ${POSTGRES_DATA_VOLUME:-wgdashboard-commercial_postgres_data}
+  wg_node_local_data:
+    name: ${WG_NODE_LOCAL_DATA_VOLUME:-wgdashboard-commercial_wg_node_local_data}
+  wg_node_local_config:
+    name: ${WG_NODE_LOCAL_CONFIG_VOLUME:-wgdashboard-commercial_wg_node_local_config}
+  nginx_certs:
+    name: ${NGINX_CERTS_VOLUME:-wgdashboard-commercial_nginx_certs}
+  nginx_vhost:
+    name: ${NGINX_VHOST_VOLUME:-wgdashboard-commercial_nginx_vhost}
+  nginx_html:
+    name: ${NGINX_HTML_VOLUME:-wgdashboard-commercial_nginx_html}
+  acme_state:
+    name: ${ACME_STATE_VOLUME:-wgdashboard-commercial_acme_state}
