@@ -25,6 +25,9 @@ services:
       WG_NODE_CLIENT_KEY: ${WG_NODE_CLIENT_KEY:-}
       WG_NODE_INSECURE_TLS: ${WG_NODE_INSECURE_TLS:-false}
       WG_NODE_OUTBOUND_DIR: /etc/wg-node/outbounds
+      # Off by default — needs a host-wide (not interface-scoped) sysctl.
+      # See wg-node/README.md's "Gaming allowlist and top-traffic report".
+      WG_NODE_TOP_TRAFFIC_REPORT: ${WG_NODE_TOP_TRAFFIC_REPORT:-false}
     volumes:
       - /etc/wireguard:/etc/wireguard
       - ./certs:/etc/wg-node/certs:ro

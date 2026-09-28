@@ -86,6 +86,9 @@ services:
       WG_NODE_PRESHARED_KEY: ${WG_NODE_PRESHARED_KEY:-true}
       WG_NODE_STATE: /var/lib/wg-node/state.json
       WG_NODE_OUTBOUND_DIR: /etc/wg-node/outbounds
+      # Off by default — needs a host-wide (not interface-scoped) sysctl.
+      # See wg-node/README.md's "Gaming allowlist and top-traffic report".
+      WG_NODE_TOP_TRAFFIC_REPORT: ${WG_NODE_TOP_TRAFFIC_REPORT:-false}
     volumes:
       - wireguard_config:/etc/wireguard
       - dashboard_data:/panel-data:ro
