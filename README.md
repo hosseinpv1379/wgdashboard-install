@@ -127,6 +127,23 @@ docker compose --env-file .env logs -f wgdashboard
 
 Each node runs on its own server. First create the node from **Panel → Nodes** and copy its **Node ID** and **Node Token**.
 
+### Enable IP forwarding
+
+Once, before creating any interface, on the node server:
+
+```bash
+echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
+
+The agent runs unprivileged inside a container, so it can't set this from
+inside itself (Docker mounts `/proc/sys` read-only unless the container is
+`--privileged`) — and since these compose files use `network_mode: host`,
+the host's own setting is the only one that matters anyway. Skipping this
+doesn't stop the node from coming online, but clients get no internet
+access through it (you'll see a `Read-only file system` warning in the
+agent's logs).
+
 ### Download the files
 
 ```bash
@@ -190,6 +207,16 @@ docker compose --env-file .env logs -f
 flow, different protocol. Each node runs on its own server. First create
 the node from **Panel → OpenVPN** and copy its **Node ID** and **Node
 Token**.
+
+### Enable IP forwarding
+
+Same reason and same command as the WireGuard node above — once, before
+creating any interface:
+
+```bash
+echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
 
 ### Download the files
 
