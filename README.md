@@ -1,8 +1,9 @@
 # WGDashboard — Installation
 
-Install files for the WGDashboard panel and its `wg-node` agent. The panel's
-source code is private; installation only uses Docker and the prebuilt
-images (`ghcr.io/hosseinpv1379/*`).
+Install files for the WGDashboard panel and its `wg-node` (WireGuard) and
+`ov-node` (OpenVPN) node agents. The panel's source code is private;
+installation only uses Docker and the prebuilt images
+(`ghcr.io/hosseinpv1379/*`).
 
 ## Install Docker
 
@@ -49,8 +50,12 @@ sudo systemctl enable --now docker
 sudo ufw allow 10086/tcp   # web panel
 sudo ufw allow 51820/udp   # WireGuard (panel's local node)
 
-# On each node server
+# On each WireGuard node server
 sudo ufw allow 51820/udp   # WireGuard
+
+# On each OpenVPN node server
+sudo ufw allow 1194/udp    # OpenVPN (UDP instance)
+sudo ufw allow 1195/tcp    # OpenVPN (TCP instance)
 ```
 
 Using CentOS/`firewalld` instead:
@@ -58,6 +63,8 @@ Using CentOS/`firewalld` instead:
 ```bash
 sudo firewall-cmd --permanent --add-port=10086/tcp
 sudo firewall-cmd --permanent --add-port=51820/udp
+sudo firewall-cmd --permanent --add-port=1194/udp
+sudo firewall-cmd --permanent --add-port=1195/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -157,6 +164,75 @@ its own. Leave the address pool/port blank to let the panel pick one, or
 give an exact CIDR like `10.88.0.0/24`. Repeat for any extra interface;
 delete one from the same page's trash icon (refused while a peer or
 outbound still uses it).
+
+### Stop
+
+```bash
+docker compose --env-file .env down
+```
+
+### Update
+
+```bash
+docker compose --env-file .env pull
+docker compose --env-file .env up -d
+```
+
+### Logs
+
+```bash
+docker compose --env-file .env logs -f
+```
+
+## Install an OpenVPN node
+
+`ov-node` is the OpenVPN sibling of `wg-node` — same registration/heartbeat
+flow, different protocol. Each node runs on its own server. First create
+the node from **Panel → OpenVPN** and copy its **Node ID** and **Node
+Token**.
+
+### Download the files
+
+```bash
+mkdir -p /opt/ov-node && cd /opt/ov-node
+curl -fsSL https://raw.githubusercontent.com/hosseinpv1379/wgdashboard-install/main/ov-node/compose.example.yaml -o compose.yaml
+curl -fsSL https://raw.githubusercontent.com/hosseinpv1379/wgdashboard-install/main/ov-node/.env.example -o .env
+```
+
+### Configure `.env`
+
+```bash
+nano .env
+```
+
+Set at least these values:
+
+| Variable | Description |
+| --- | --- |
+| `OV_PANEL_URL` | the panel's address, e.g. `https://panel.example.com` |
+| `OV_NODE_ID` / `OV_NODE_TOKEN` | from the panel's OpenVPN page |
+| `OV_NODE_PUBLIC_ENDPOINT` | this node server's IP, e.g. `1.2.3.4:1194` |
+| `OV_NODE_NAME` / `OV_NODE_REGION` | node name and location |
+
+No need to install OpenVPN, generate any certificate, or write a config by
+hand — the agent runs its own certificate authority and provisions
+everything itself.
+
+### Run
+
+```bash
+docker compose --env-file .env pull
+docker compose --env-file .env up -d
+```
+
+Once the node shows `online` in the panel (usually under a minute), go to
+**Panel → OpenVPN → this node → Add interface** to create its first
+interface — the agent registers the node but never creates an interface on
+its own. Every interface always runs a UDP and a TCP OpenVPN instance side
+by side, so one certificate connects over either; leave the ports/pool
+blank to use the defaults, or set your own. Repeat for any extra interface;
+delete one from the same page's trash icon (refused while a user still
+targets it).
 
 ### Stop
 

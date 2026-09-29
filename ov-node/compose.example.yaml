@@ -1,0 +1,40 @@
+services:
+  ov-node:
+    image: ${OV_NODE_IMAGE:-ghcr.io/hosseinpv1379/ov-node:latest}
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    environment:
+      OV_PANEL_URL: ${OV_PANEL_URL:?Set OV_PANEL_URL}
+      OV_NODE_ID: ${OV_NODE_ID:-}
+      OV_NODE_TOKEN: ${OV_NODE_TOKEN:-}
+      OV_NODE_BOOTSTRAP_TOKEN: ${OV_NODE_BOOTSTRAP_TOKEN:-}
+      OV_NODE_NAME: ${OV_NODE_NAME:-ovpn-node}
+      OV_NODE_REGION: ${OV_NODE_REGION:-}
+      OV_NODE_PUBLIC_ENDPOINT: ${OV_NODE_PUBLIC_ENDPOINT:?Set the public OpenVPN endpoint}
+      # No interface config here: the agent creates none on its own. Create
+      # the first (and every later) one from Commercial Panel → OpenVPN →
+      # Add interface once this node has registered.
+      OV_NODE_CAPACITY: ${OV_NODE_CAPACITY:-0}
+      OV_NODE_POLL_SECONDS: ${OV_NODE_POLL_SECONDS:-5}
+      OV_NODE_REPORT_SECONDS: ${OV_NODE_REPORT_SECONDS:-15}
+      # Every interface always runs a UDP and a TCP OpenVPN instance side by
+      # side (one certificate connects over either); these are only the
+      # defaults used when an interface doesn't specify its own ports.
+      OV_NODE_LISTEN_PORT_UDP: ${OV_NODE_LISTEN_PORT_UDP:-1194}
+      OV_NODE_LISTEN_PORT_TCP: ${OV_NODE_LISTEN_PORT_TCP:-1195}
+      OV_NODE_CA_CERT: ${OV_NODE_CA_CERT:-}
+      OV_NODE_CLIENT_CERT: ${OV_NODE_CLIENT_CERT:-}
+      OV_NODE_CLIENT_KEY: ${OV_NODE_CLIENT_KEY:-}
+      OV_NODE_INSECURE_TLS: ${OV_NODE_INSECURE_TLS:-false}
+    volumes:
+      - ./certs:/etc/ov-node/certs:ro
+      - ov_node_data:/var/lib/ov-node
+      - ov_node_config:/etc/ov-node
+
+volumes:
+  ov_node_data:
+  ov_node_config:
